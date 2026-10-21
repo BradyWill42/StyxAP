@@ -45,7 +45,8 @@ includes/styx/pages/      one skeleton per tab
 app/js/styx.js            every live part, drawn from the feed's status
 app/css/styx.css          the Styx palette, light and dark
 ajax/styx/                status, history, usage, requests, DNS lookups (JSON)
-api/                      RaspAP's REST API, unchanged
+installers/               install.sh and uninstall.sh
+api/                      RaspAP's REST API (it no longer prints its key as it starts)
 config/50-raspap-router.conf   lighttpd: everything but assets is index.php
 ```
 
@@ -57,10 +58,27 @@ php -S 127.0.0.1:8099 dev/router.php
 
 serves `dev/fixture/` as the feed's output, signed in as `brady`.
 
-## Installing
+## Installing and removing
 
-Styx installs StyxAP itself: `prepare_hotspots.py` pins a commit of this repository and
-reinstalls the web root whenever the pin changes. Nothing here is installed by hand.
+Moving the `AP` tag from one Pi to another is the whole procedure: Styx installs StyxAP on
+the Pi that gains the tag and removes it from the one that loses it. Both are one script,
+safe to run again:
+
+```
+sudo installers/install.sh       # from a checkout: install, or update in place
+sudo /usr/local/lib/styxap/uninstall.sh    # remove what install.sh put down
+```
+
+`install.sh` builds the new web root beside the live one and swaps it in whole, so a
+failed install leaves the portal as it was; it refuses to replace a web root that holds
+another site. It also leaves its uninstaller at `/usr/local/lib/styxap/`, so a node can
+always undo what it has, whichever StyxAP that was. Paths can be moved with `STYXAP_ROOT`,
+`STYXAP_API`, `STYXAP_LIGHTTPD` and `STYXAP_LIB`.
+
+Styx pins a commit of this repository (`STYXAP_COMMIT` in its `hotspot.py`). The AP pod
+fetches that commit and runs `install.sh` whenever the Pi serves another, so a new pin
+reaches every access point with the next deploy. A Pi that loses the tag has its AP pod
+removed and `uninstall.sh` run, along with Styx's own access-point state.
 
 ## License
 
