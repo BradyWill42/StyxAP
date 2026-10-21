@@ -16,7 +16,7 @@
 
 declare(strict_types=1);
 
-const STYXAP_VERSION = '1.0.0';
+const STYXAP_VERSION = '1.1.0';
 
 function styx_run_dir(): string
 {

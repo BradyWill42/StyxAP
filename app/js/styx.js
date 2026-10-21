@@ -157,6 +157,24 @@
     return found;
   }
 
+  // The band's route is styxctl's (`styxctl mesh pistyx route`, which the feed asks every
+  // 15s): the holder, the exit tunnel and where pistyx points, as they are now. Nothing
+  // here guesses it from anything else.
+  function route() { return get('route') || {}; }
+  function routeKind(r) { return r.error ? 'bad' : r.status === 'OK' ? 'ok' : r.status === 'WARN' ? 'warn' : 'bad'; }
+  function carrier(r) { return r.error || !r.holder ? null : r.holder.here ? 'this Pi' : r.holder.name; }
+  function routeSource() {
+    var at = route().checked_at, now = get('generated');
+    return 'From <span class="mono">styxctl mesh pistyx route</span>' +
+      (num(at) && num(now) ? ', ' + esc(fmt.ago(Math.max(0, now - at))) : '');
+  }
+  function routeProblems(r) {
+    var problems = r.error ? [r.error] : (r.problems || []);
+    return problems.length ? '<div class="notice ' + routeKind(r) + '" style="margin-top:14px"><i class="fa-solid fa-triangle-exclamation"></i><div>' +
+      problems.map(esc).join('<br>') + '</div></div>' : '';
+  }
+  var ROUTE_ICONS = { pi: 'fa-microchip', mesh: 'fa-diagram-project', holder: 'fa-shield-halved', internet: 'fa-globe' };
+
   // ------------------------------------------------------------------ renderers, by data-render
   var R = {};
 
@@ -170,7 +188,7 @@
     $('[data-bind="stats"]', el).innerHTML = [
       [String((get('stations') || []).length), 'devices connected'],
       [fmt.bits((history('radio_rx').slice(-1)[0] || 0) + (history('radio_tx').slice(-1)[0] || 0)), 'on the radio now'],
-      [get('egress.holder') || '—', 'carries traffic out'],
+      [carrier(route()) || '—', 'carries traffic out'],
       [fmt.span(get('pi.uptime_s')), 'Pi uptime']
     ].map(function (s) { return '<div><b>' + esc(s[0]) + '</b><span>' + esc(s[1]) + '</span></div>'; }).join('');
   };
@@ -185,7 +203,8 @@
     var heard = nodes.filter(function (p) { return num(p.handshake_age_s) && p.handshake_age_s < 180; }).length;
     el.innerHTML = kv([
       ['Mesh', nodes.length ? pill(heard + ' of ' + nodes.length + ' Pis heard', heard === nodes.length ? 'ok' : heard ? 'warn' : 'bad', true) : '—', true],
-      ['Egress', get('egress.holder') ? (get('egress.here') ? 'this Pi' : 'via ' + get('egress.holder')) : '—'],
+      ['Egress', route().error ? pill('route unknown', 'bad', true) : carrier(route())
+        ? pill(route().holder.here ? 'this Pi' : 'via ' + carrier(route()), routeKind(route()), true) : '—', true],
       ['Leases', String((get('leases') || []).length) + ' handed out'],
       ['Reserved', String((get('reservations') || []).length) + ' fleet names'],
       ['VPN clients', String((get('facts.clients') || []).length) + ' registered'],
@@ -223,21 +242,23 @@
     if (legendHost) legendHost.innerHTML = legend([[el.getAttribute('data-rx') || 'In', 1], [el.getAttribute('data-tx') || 'Out', 2]]);
   };
 
+  // The packet route: the devices and the radio as the feed measures them, then every hop
+  // styxctl reports - this Pi, the Styx mesh, the holder, the internet - in its own state.
   R.path = function (el) {
-    var on = onAir(), holder = get('egress.holder'), here = get('egress.here'), age = get('egress.handshake_age_s');
-    var node = get('facts.node') || 'this Pi', n = (get('stations') || []).length;
-    var reach = here ? 'ok' : !num(age) ? 'bad' : age < 180 ? 'ok' : age < 600 ? 'warn' : 'bad';
+    var on = onAir(), n = (get('stations') || []).length, r = route();
     var hops = [
       ['fa-mobile-screen-button', n + ' device' + (n === 1 ? '' : 's'), 'on the Wi-Fi', n ? 'ok' : ''],
-      ['fa-tower-broadcast', get('radio.ssid') || get('facts.ssid'), on ? 'channel ' + (get('radio.channel') || '?') : 'off the air', on ? 'ok' : 'bad'],
-      ['fa-microchip', node, 'this Pi', 'ok'],
-      here ? null : ['fa-diagram-project', 'Styx mesh', 'WireGuard, ' + (num(age) ? 'heard ' + fmt.ago(age) : 'no handshake'), reach],
-      ['fa-shield-halved', holder || 'pistyx', here ? 'this Pi carries it out' : 'carries it out', holder ? reach : 'bad'],
-      ['fa-globe', 'Internet', get('egress.hostname') || '', holder ? reach : '']
-    ].filter(Boolean);
+      ['fa-tower-broadcast', get('radio.ssid') || get('facts.ssid'), on ? 'channel ' + (get('radio.channel') || '?') : 'off the air', on ? 'ok' : 'bad']
+    ];
+    if (r.error || !(r.hops || []).length) {
+      hops.push(['fa-microchip', get('facts.node') || 'this Pi', 'this Pi', 'ok']);
+      hops.push(['fa-circle-question', 'Route unknown', 'styxctl could not say', 'bad']);
+    } else {
+      r.hops.forEach(function (h) { hops.push([ROUTE_ICONS[h.role] || 'fa-circle', h.name, h.detail, h.state]); });
+    }
     el.innerHTML = '<div class="path">' + hops.map(function (h) {
       return '<div class="hop ' + h[3] + (h[3] === 'ok' ? ' flow' : '') + '"><div class="node"><i class="fa-solid ' + h[0] + '"></i></div><b>' + esc(h[1]) + '</b><small>' + esc(h[2]) + '</small></div>';
-    }).join('') + '</div>';
+    }).join('') + '</div>' + routeProblems(r) + '<p class="note">' + routeSource() + '</p>';
   };
 
   var stationColumns = [
@@ -342,7 +363,7 @@
     el.innerHTML = kv([
       ['Clients ask', (b.gateway_v4 || '—') + (b.gateway_v6 ? ' · ' + b.gateway_v6 : '') + ' — this radio'],
       ['Which asks', (get('facts.resolvers_v4') || []).concat(get('facts.resolvers_v6') || []).join(', ') || '—'],
-      ['Answered here', get('egress.here') && pistyx.hostname ? pistyx.hostname + ' (this Pi holds it)' : 'nothing — every name goes to the fleet'],
+      ['Answered here', get('route.holder.here') && pistyx.hostname ? pistyx.hostname + ' (this Pi holds it)' : 'nothing — every name goes to the fleet'],
       ['Public resolvers', 'none: answers come from Styx or not at all'],
       ['Search domain', get('facts.domain')],
       ['This portal', get('facts.portal')]
@@ -402,7 +423,7 @@
   };
 
   R.vpn = function (el) {
-    var live = {}, holder = get('egress.holder'), here = get('egress.here');
+    var live = {}, holder = get('route.holder.name'), here = get('route.holder.here');
     peers('client').forEach(function (p) { live[p.public_key] = p; });
     var clients = (get('facts.clients') || []).map(function (c) { return Object.assign({ live: live[c.public_key] }, c); });
     el.innerHTML = '<p class="note" style="margin:0 0 14px">Registered Styx VPN clients. ' +
@@ -416,14 +437,21 @@
   };
 
   R.egress = function (el) {
-    var holder = get('egress.holder'), here = get('egress.here'), pistyx = get('facts.pistyx') || {};
+    var r = route(), holder = r.holder || {}, mesh = r.mesh || {}, net = r.internet || {};
+    if (r.error) { el.innerHTML = routeProblems(r) + '<p class="note">' + routeSource() + '</p>'; return; }
+    var site = function (index) { return num(index) ? 'site ' + index : 'a site the roster does not place'; };
     el.innerHTML = kv([
-      ['Carried out by', holder ? holder + (here ? ' — this Pi' : '') : 'no pistyx holder known'],
-      ['Public name', pistyx.hostname],
-      ['Mesh to the holder', here ? 'not needed' : handshake(get('egress.handshake_age_s')), !here],
-      ['How', here ? 'The band\'s traffic leaves through this Pi\'s own uplink.' : 'Every device on this Wi-Fi reaches the internet over the WireGuard mesh to ' + (holder || 'the holder') + ', which carries it out. If the holder moves, the band follows it.'],
-      ['Local overrides', here && pistyx.hostname ? pistyx.hostname + ' answers with the band gateway' : 'none']
-    ]);
+      ['State', pill(r.status || 'unknown', routeKind(r), true), true],
+      ['Carried out by', holder.name ? holder.name + (holder.here ? ' — this Pi' : '') + ', ' + site(holder.site) : '—'],
+      holder.here ? ['Out of', net.uplink ? net.uplink + ', this Pi\'s own uplink' : 'no uplink'] : null,
+      holder.here ? null : ['Exit tunnel', mesh.interface ? mesh.interface + ' to ' + (mesh.endpoint || 'no endpoint') : '—'],
+      holder.here ? null : ['It lands at', mesh.endpoint_ip ? site(mesh.endpoint_site) : '—'],
+      holder.here ? null : ['Last handshake', handshake(mesh.handshake_age_s), true],
+      holder.here ? null : ['Through it', num(mesh.rx_bytes) ? fmt.bytes(mesh.rx_bytes) + ' in · ' + fmt.bytes(mesh.tx_bytes) + ' out' : '—'],
+      holder.here ? null : ['Band route', mesh.band_table_dev ? 'table ' + mesh.band_table + ' → ' + mesh.band_table_dev + (mesh.band_rule ? '' : ' (no rule sends the band there)') : 'table ' + (mesh.band_table || '—') + ' has no default route'],
+      ['Public name', net.hostname ? net.hostname + (net.resolves_to && net.resolves_to.length ? ' → ' + net.resolves_to.join(', ') : ' (does not resolve)') : '—'],
+      ['Leaves at', net.public_ipv4]
+    ]) + routeProblems(r);
   };
 
   R['usage-days'] = function (el) {

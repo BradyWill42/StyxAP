@@ -16,6 +16,7 @@ if (getenv('STYXAP_RUN') === false) {
             $shift = time() - $value['generated'];
             $value['generated'] = time();
             $value['history']['t'] = array_map(fn ($t) => $t + $shift, $value['history']['t']);
+            $value['route']['checked_at'] += $shift;
         }
         file_put_contents($run . '/' . $name, json_encode($value));
     }

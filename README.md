@@ -11,7 +11,7 @@ here shows the Styx service that stands where RaspAP's did:
 
 | Tab | Shows |
 |---|---|
-| Dashboard | the radio, the Pi's vitals, live Wi-Fi traffic, the path a device's traffic takes out |
+| Dashboard | the radio, the Pi's vitals, live Wi-Fi traffic, and the packet route out |
 | Hotspot | the radio (channel, width, power, devices), and the few settings it may change |
 | DHCP Server | the radio's slice of the fleet client band, its leases and fleet reservations |
 | DNS *(was Ad Blocking)* | who answers a device here, and a lookup through the fleet's resolvers |
@@ -19,7 +19,7 @@ here shows the Styx service that stands where RaspAP's did:
 | Uplink *(was WiFi client)* | how the Pi itself is connected |
 | WireGuard | the Styx mesh: every Pi, its endpoint, its last handshake |
 | VPN clients *(was OpenVPN)* | the fleet's registered WireGuard clients |
-| Egress *(was VPN Provider)* | pistyx: which Pi carries this Wi-Fi out to the internet |
+| Egress *(was VPN Provider)* | pistyx: the holder, the exit tunnel and where the band leaves, as styxctl reports it |
 | Data usage | live, the last day, five weeks by day, and per device |
 | System | the Pi: model, CPU per core, temperature, throttling, memory, disks |
 | RestAPI | RaspAP's API on the portal's own name, keyed by the portal |
@@ -32,6 +32,12 @@ AP pod and writes `/run/styx-ap/status.json` every three seconds. A change - res
 radio, or its channel, country, client limit or hidden network name - is a request the
 portal drops in `/run/styx-ap/requests/`; the feed applies only what its allowlist permits,
 and undoes a channel that does not bring the radio back within a minute.
+
+The packet route is not measured by the feed but asked of Styx: every 15 seconds the feed
+runs `styxctl mesh pistyx route --json` on the Pi, and the route StyxAP draws - this Pi,
+the Styx mesh, the pistyx holder, the internet - is that answer, hop by hop, with every
+place they disagree (a tunnel still dialling the old site, a name that moved ahead of it).
+When styxctl cannot answer, the route says so; it is never guessed from anything else.
 
 The AP's lighttpd answers only requests the Styx sign-in sent (Styx's `hotspot.py`), and the
 sign-in names the person in `X-Styx-User`. There is no login here, and no fallback.

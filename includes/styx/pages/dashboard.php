@@ -21,7 +21,7 @@
   <section class="card"><h2>At a glance</h2><div data-render="glance"></div></section>
 </div>
 <section class="card" style="margin-top:18px">
-  <div class="card-head"><h2>How a device here reaches the internet</h2><a href="/egress">Egress <i class="fa-solid fa-arrow-right"></i></a></div>
+  <div class="card-head"><h2>Packet route</h2><a href="/egress">Egress <i class="fa-solid fa-arrow-right"></i></a></div>
   <div data-render="path"></div>
 </section>
 <section class="card" style="margin-top:18px">
